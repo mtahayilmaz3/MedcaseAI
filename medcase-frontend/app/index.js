@@ -1,138 +1,161 @@
 import { useEffect, useState, useMemo } from "react";
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, SafeAreaView, ScrollView, Pressable } from "react-native";
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, SafeAreaView, ScrollView, Pressable, Alert } from "react-native";
 import { useRouter } from "expo-router";
-import { listCases, startDialogue } from "../src/api/endpoints";
+import { listCases } from "../src/api/endpoints";
 import { CaseCard } from "../src/components/common/CaseCard";
 import { Colors } from "../src/theme/colors";
-
-const CATEGORIES = ["Hepsi", "Kardiyoloji", "Nöroloji", "Genel Dahiliye / Diğer", "Dermatoloji", "Ortopedi & Travmatoloji"];
-
-// Durum etiketleri için yardımcı fonksiyon
-const getStatusDetails = (status) => {
-  switch (status) {
-    case 'Çözüldü': 
-      return { bg: '#DCFCE7', text: '#166534', label: 'Tamamlandı' };
-    case 'Devam Ediyor': 
-      return { bg: '#FEF9C3', text: '#854D0E', label: 'İşleniyor' };
-    default: 
-      return { bg: '#F1F5F9', text: '#475569', label: 'Çözülecek' };
-  }
-};
+import { Ionicons } from "@expo/vector-icons";
+import { StatsDashboard } from "../src/components/home/StatsDashboard";
+import { getGlobalStats } from "../src/api/database";
 
 export default function HomePage() {
-  const router = useRouter();
-  const [cases, setCases] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState("Hepsi");
+const router = useRouter();
+const [cases, setCases] = useState([]);
+const [loading, setLoading] = useState(true);
+const [activeCategory, setActiveCategory] = useState("Hepsi");
+const [stats, setStats] = useState({ totalSolved: 0, avgScore: 0 });
 
-  useEffect(() => {
-    // Backend'den gelen verilere 'status' simülasyonu ekliyoruz 
-    // (Gerçek veride status varsa bu kısmı sadece setCases(res) yapabilirsin)
-    listCases().then(res => {
-      const enrichedCases = res.map(c => ({
-        ...c,
-        status: c.status || 'Çözülecek' // Varsayılan durum
-      }));
-      setCases(enrichedCases);
-    }).finally(() => setLoading(false));
-  }, []);
+// 1. DB'deki vaka verilerini ve kategorileri çek
+useEffect(() => {
+// SQLite istatistikleri
+try {
+const data = getGlobalStats();
+if (data) setStats({ totalSolved: data.totalSolved || 0, avgScore: data.avgScore || 0 });
+} catch (e) { console.log("Stats DB henüz hazır değil."); }
 
-  const filteredCases = useMemo(() => {
-    let result = cases;
-    if (activeCategory !== "Hepsi") {
-      result = result.filter(c => c.specialty === activeCategory);
-    }
-    // Önce çözülecek olanları, sonra devam edenleri gösteren bir sıralama
-    return result.sort((a, b) => (a.status === 'Çözüldü' ? 1 : -1));
-  }, [cases, activeCategory]);
+// Vaka listesi
+listCases().then(res => {
+const enriched = res.map(c => ({ ...c, status: c.status || 'Çözülecek' }));
+setCases(enriched);
+}).finally(() => setLoading(false));
+}, []);
 
-  if (loading) return <ActivityIndicator size="large" color={Colors.accent} style={{ marginTop: 50 }} />;
+// 2. Dinamik Kategori Listesi (DB'deki specialty alanlarından benzersiz olanları al)
+const dynamicCategories = useMemo(() => {
+const specs = cases.map(c => c.specialty).filter(Boolean);
+return ["Hepsi", ...new Set(specs)];
+}, [cases]);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.welcome}>Merhaba, Dr. Göktuğ</Text>
-        <Text style={styles.title}>Vaka Kütüphanesi</Text>
-      </View>
+// 3. Filtrelenmiş Vakalar
+const filteredCases = useMemo(() => {
+let result = activeCategory === "Hepsi"
+? cases
+: cases.filter(c => c.specialty === activeCategory);
+return [...result].sort((a, b) => (a.status === 'Çözüldü' ? 1 : -1));
+}, [cases, activeCategory]);
 
-      <View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryContainer}>
-          {CATEGORIES.map((cat) => (
-            <Pressable 
-              key={cat} 
-              onPress={() => setActiveCategory(cat)}
-              style={[styles.catBadge, activeCategory === cat && styles.catBadgeActive]}
-            >
-              <Text style={[styles.catText, activeCategory === cat && styles.catTextActive]}>{cat}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
+// 4. Kategoriye Özel Hızlı Antrenman Yönlendirmesi
+const handleQuickTraining = () => {
+if (filteredCases.length === 0) {
+Alert.alert("Hata", "Bu kategoride vaka bulunamadı.");
+return;
+}
+const randomIndex = Math.floor(Math.random() * filteredCases.length);
+const selectedCase = filteredCases[randomIndex];
+// Raporu okuması için önce Patient Record (Detay) sayfasına yönlendiriyoruz
+router.push({
+pathname: `/case/${selectedCase.id}`,
+params: { mode: 'training' }
+});
+};
 
-      <FlatList
-        data={filteredCases}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => {
-          const status = getStatusDetails(item.status);
-          return (
-            <View style={styles.cardContainer}>
-              <CaseCard item={item} onPress={() => router.push(`/case/${item.id}`)} />
-              {/* Vaka Kartı Üzerine Bindirilen Tag (Etiket) */}
-              <View style={[styles.statusTag, { backgroundColor: status.bg }]}>
-                <Text style={[styles.statusTagText, { color: status.text }]}>{status.label}</Text>
-              </View>
-            </View>
-          );
-        }}
-        ListHeaderComponent={() => (
-          <Pressable 
-            style={styles.randomCard}
-            onPress={async () => {
-              const c = await startDialogue();
-              router.push(`/case/${c.id}`);
-            }}
-          >
-            <View style={styles.randomCardContent}>
-              <View>
-                <Text style={styles.randomTitle}>Hızlı Antrenman</Text>
-                <Text style={styles.randomSub}>Rastgele bir vaka ile yeteneklerini test et.</Text>
-              </View>
-              <Text style={{fontSize: 30}}>🎯</Text>
-            </View>
-          </Pressable>
-        )}
-        contentContainerStyle={styles.list}
-      />
-    </SafeAreaView>
-  );
+if (loading) return <ActivityIndicator size="large" color={Colors.accent} style={{ flex: 1 }} />;
+
+return (
+<SafeAreaView style={styles.container}>
+<ScrollView showsVerticalScrollIndicator={false}>
+<View style={styles.topSection}>
+<View>
+<Text style={styles.welcomeText}>Merhaba, Dr. John Doe</Text>
+<Text style={styles.subWelcome}>Veritabanında {cases.length} vaka hazır.</Text>
+</View>
+<Pressable style={styles.avatarCircle} onPress={() => router.push('/profile')}>
+<Text style={styles.avatarInitial}>JD</Text>
+</Pressable>
+</View>
+
+<StatsDashboard totalSolved={stats.totalSolved} avgScore={stats.avgScore} />
+
+{/* Dinamik Kategoriler - Yatay Scroll */}
+<View style={styles.categoryWrapper}>
+<Text style={styles.sectionTitle}>Uzmanlık Alanları</Text>
+<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryContainer}>
+{dynamicCategories.map((cat) => (
+<Pressable
+key={cat}
+onPress={() => setActiveCategory(cat)}
+style={[styles.catBadge, activeCategory === cat && styles.catBadgeActive]}
+>
+<Text style={[styles.catText, activeCategory === cat && styles.catTextActive]}>{cat}</Text>
+</Pressable>
+))}
+</ScrollView>
+</View>
+
+{/* Kategoriye Duyarlı Hızlı Antrenman Kartı */}
+<View style={styles.actionSection}>
+<Pressable style={styles.randomCard} onPress={handleQuickTraining}>
+<View style={styles.randomCardContent}>
+<View style={{ flex: 1 }}>
+<Text style={styles.randomTitle}>
+{activeCategory === "Hepsi" ? "Hızlı Antrenman" : `${activeCategory} Pratiği`}
+</Text>
+<Text style={styles.randomSub}>
+{activeCategory === "Hepsi"
+? "Rastgele bir vaka ile genel yeteneklerini test et."
+: `${activeCategory} alanından seçilen rastgele bir vakayı incele.`}
+</Text>
+</View>
+<View style={styles.iconCircle}>
+<Ionicons name="medical" size={26} color="white" />
+</View>
+</View>
+</Pressable>
+</View>
+
+<Text style={styles.sectionTitle}>Vaka Listesi ({filteredCases.length})</Text>
+<View style={styles.listContainer}>
+{filteredCases.map((item) => {
+// getStatusDetails fonksiyonunun burada çağrıldığını varsayıyoruz (stil için)
+return (
+<View key={item.id} style={styles.cardContainer}>
+<CaseCard item={item} onPress={() => router.push(`/case/${item.id}`)} />
+<View style={styles.statusBadge}>
+<Text style={styles.statusText}>{item.status}</Text>
+</View>
+</View>
+);
+})}
+</View>
+
+</ScrollView>
+</SafeAreaView>
+);
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: { padding: 20 },
-  welcome: { fontSize: 14, color: Colors.textSub, fontWeight: '500' },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.textMain },
-  categoryContainer: { paddingHorizontal: 20, paddingBottom: 15, gap: 10 },
-  catBadge: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border },
-  catBadgeActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  catText: { color: Colors.textSub, fontWeight: '600' },
-  catTextActive: { color: Colors.white },
-  list: { paddingHorizontal: 20, paddingBottom: 40 },
-  
-  cardContainer: { position: 'relative' },
-  statusTag: { 
-    position: 'absolute', 
-    top: 12, 
-    right: 12, 
-    paddingHorizontal: 8, 
-    paddingVertical: 4, 
-    borderRadius: 6,
-    zIndex: 10
-  },
-  statusTagText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+container: { flex: 1, backgroundColor: '#F8FAFC' },
+topSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+welcomeText: { fontSize: 20, fontWeight: '800', color: '#1E293B' },
+subWelcome: { fontSize: 13, color: '#64748B' },
+avatarCircle: { width: 45, height: 45, borderRadius: 22.5, backgroundColor: Colors.accent, justifyContent: 'center', alignItems: 'center' },
+avatarInitial: { color: 'white', fontWeight: 'bold' },
+categoryWrapper: { marginBottom: 15 },
+sectionTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B', paddingHorizontal: 20, marginBottom: 12 },
+categoryContainer: { paddingHorizontal: 20, gap: 10 },
+catBadge: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, backgroundColor: 'white', borderWidth: 1, borderColor: '#E2E8F0' },
+catBadgeActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+catText: { color: '#64748B', fontWeight: '700', fontSize: 13 },
+catTextActive: { color: 'white' },
+actionSection: { marginBottom: 20 },
+randomCard: { backgroundColor: '#1E293B', marginHorizontal: 20, padding: 20, borderRadius: 24, elevation: 4 },
+randomCardContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+randomTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+randomSub: { color: '#94A3B8', fontSize: 12, marginTop: 4, lineHeight: 18 },
+iconCircle: { width: 50, height: 50, borderRadius: 25, backgroundColor: Colors.accent, justifyContent: 'center', alignItems: 'center', marginLeft: 15 },
 
-  randomCard: { backgroundColor: Colors.accent, padding: 20, borderRadius: 24, marginBottom: 25, shadowColor: Colors.accent, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  randomCardContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  randomTitle: { color: Colors.white, fontSize: 18, fontWeight: 'bold' },
-  randomSub: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 4 }
+listContainer: { paddingHorizontal: 20, paddingBottom: 40 },
+cardContainer: { position: 'relative', marginBottom: 10 },
+statusBadge: { position: 'absolute', top: 15, right: 15, backgroundColor: '#F1F5F9', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 },
+statusText: { fontSize: 10, fontWeight: '800', color: '#64748B' }
 });
