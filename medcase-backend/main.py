@@ -113,4 +113,5 @@ async def query_case(case_id: str, req: QueryRequest):
 
 if __name__ == "__main__":
     print("🚀 Sunucu Python üzerinden başlatılıyor...")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    # host="0.0.0.0" yaparak tüm ağdaki cihazların (telefonun) erişmesine izin veriyoruz.
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -5,13 +5,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 
-from services.case_service import case_service
+# --- DEĞİŞİKLİK: Eski servisi sildik, yerine yeni Ajan hafızasını ekledik ---
+from case_selector.selector_agent import selector_agent
+# --------------------------------------------------------------------------
 
-# Sende nasıl tanımlıysa:
-# - Eğer tutor_agent bir instance ise: from tutor.tutor_agent import tutor_agent
-# - Eğer class ise: from tutor.tutor_agent import TutorAgent
 from tutor.tutor_agent import TutorAgent
-
 from tutor.schemas import (
     TutorInput,
     TutorOutput,
@@ -20,41 +18,76 @@ from tutor.schemas import (
     UserContext,
 )
 
-router = APIRouter(prefix="/tutor", tags=["tutor"])
+# Prefix main.py'de tanımlı olabilir ama burada da router tanımlıyoruz
+router = APIRouter()
+
+# Ajanı başlatıyoruz
+agent_instance = TutorAgent()
+
+# -------------------------------------------------------------------------
+# 1. FRONTEND İÇİN YENİ ENDPOINT (/ask)
+# Frontend şu an buraya istek atıyor: apiPost("/tutor/ask", body)
+# -------------------------------------------------------------------------
+@router.post("/ask", response_model=TutorOutput)
+async def ask_tutor(req: TutorInput):
+    """
+    Frontend 'Hoca Modu'ndan gelen istekleri karşılar.
+    Frontend sadece Case ID gönderir, biz burada içini doldururuz.
+    """
+    # 1. Vakayı hafızadan bul
+    case_data = selector_agent.get_case_by_id(req.case.id)
+    
+    if not case_data:
+        raise HTTPException(status_code=404, detail="Case not found in memory")
+
+    # 2. Frontend'den gelen 'req' nesnesinin içindeki vaka bilgisini
+    #    veritabanındaki (hafızadaki) gerçek metinlerle doldur.
+    #    (Çünkü frontend sadece ID yolluyor, metni yollamıyor)
+    req.case.title = case_data.get("title", "")
+    req.case.narrative = case_data.get("narrative", "")
+    req.case.summary = case_data.get("narrative", "")[:200]
+
+    # 3. Ajanı çalıştır
+    try:
+        response = agent_instance.run(req)
+        return response
+    except Exception as e:
+        print(f"Tutor Agent Hatası: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# -------- Request models (FastAPI) --------
+# -------------------------------------------------------------------------
+# 2. ESKİ ENDPOINT (Yedeklilik İçin Korundu)
+# Eğer eski bir yapı root ("/") adresine istek atarsa burası çalışır.
+# -------------------------------------------------------------------------
+
+# Eski Request Modelleri (Geriye uyumluluk için)
 class StepPayload(BaseModel):
     question: str = Field(min_length=1)
     options: List[str] = Field(default_factory=list)
     correct: Optional[int] = None
     selectedIndex: Optional[int] = None
 
-
-class TutorRequest(BaseModel):
+class LegacyTutorRequest(BaseModel):
     mode: Literal["hint", "explain", "teach"] = "hint"
     case_id: str
     message: str
     step: Optional[StepPayload] = None
 
-
 @router.post("", response_model=TutorOutput)
-async def tutor(req: TutorRequest) -> TutorOutput:
-    # 1) Case çek
-    case = case_service.get_case_by_id(req.case_id)
+async def tutor_legacy(req: LegacyTutorRequest) -> TutorOutput:
+    # 1) Case çek (Yeni Selector Agent'tan)
+    case = selector_agent.get_case_by_id(req.case_id)
     if not case:
         raise HTTPException(status_code=404, detail=f"Case not found: {req.case_id}")
 
-    # 2) StepContext (zorunluysa requestte step şart yap, değilse default üret)
-    # Senin StepContext şeman question/options min_length istiyor; o yüzden step yoksa
-    # case içinden seed_questions veya narrative'den default üretmek gerekiyor.
+    # 2) StepContext Oluştur
     if req.step is None:
-        # Minimum çalışsın diye basit default:
-        seed_q = (case.get("seed_questions") or ["Bu vakada ilk yaklaşımın nedir?"])[0]
+        seed_q = "Bu vakada ilk yaklaşımın nedir?"
         step_ctx = StepContext(
             question=seed_q,
-            options=["Devam et", "İpucu ver"],  # en az 2 seçenek şartsa
-            correct=0,  # correct zorunluysa 0 veriyoruz (teach modda kullanılabilir)
+            options=["Devam et", "İpucu ver"],
+            correct=0,
         )
         user_ctx = UserContext(selectedIndex=None, ask=req.message)
     else:
@@ -68,25 +101,22 @@ async def tutor(req: TutorRequest) -> TutorOutput:
             ask=req.message,
         )
 
-    # 3) CaseContext
-    # DİKKAT: senin CaseContext şeman hangi alanları istiyorsa ona göre doldur.
+    # 3) CaseContext Doldur
     case_ctx = CaseContext(
         id=case.get("id", req.case_id),
         title=case.get("title", ""),
-        summary=case.get("summary", ""),   # yoksa boş
+        narrative=case.get("narrative", ""), # Narrative eklendi
+        summary=case.get("narrative", "")[:200],
         step=step_ctx,
     )
 
-    # 4) TutorInput
+    # 4) TutorInput Hazırla
     inp = TutorInput(
         mode=req.mode,
-        case_id=req.case_id,
-        message=req.message,
         case=case_ctx,
         user=user_ctx,
+        language="tr" # Varsayılan Türkçe
     )
 
-    # 5) Agent çağır (tek parametre)
-    agent = TutorAgent()
-    out = agent.run(inp)
-    return out
+    # 5) Agent Çağır
+    return agent_instance.run(inp)
