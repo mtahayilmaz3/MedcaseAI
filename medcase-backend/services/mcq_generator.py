@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 from google import genai
 
+
 load_dotenv()
 
 class MCQGenerator:

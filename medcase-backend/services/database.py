@@ -1,21 +1,26 @@
 # services/database.py
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Veritabanı dosyasının adı. Proje klasöründe "medcase.db" olarak oluşacak.
-SQLALCHEMY_DATABASE_URL = "sqlite:///./medcase.db"
+DATABASE_URL = "sqlite:///./medcase.db"
 
-# SQLite için thread check iptali gerekiyor
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}  # SQLite için ZORUNLU
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+    
+)
+print(">>> SQLITE DB URL:", engine.url)
 
 Base = declarative_base()
 
-# Dependency (Routerlarda kullanmak için)
+
+# 🔴 EKSİK OLAN FONKSİYON (HATANIN SEBEBİ)
 def get_db():
     db = SessionLocal()
     try:

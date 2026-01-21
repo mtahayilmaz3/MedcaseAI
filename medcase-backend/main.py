@@ -1,6 +1,13 @@
 # main.py
 import sys
 import os
+import orjson
+from services.database import SessionLocal
+from services.models import Case
+from routers.tutor_router import router as tutor_api
+from routers.dialogue_router import router as dialogue_api
+from routers.user_router import router as user_api
+
 
 # --- SİGORTA KODU ---
 # Python'un klasörleri bulmasını garantiye alır
@@ -55,6 +62,9 @@ if tutor_router:
 
 if user_router:  # <--- EKLENDİ (İstatistik Endpointleri)
     app.include_router(user_router.router, prefix="/user", tags=["User"])
+    app.include_router(tutor_api, prefix="/tutor", tags=["tutor"])
+app.include_router(dialogue_api, prefix="/dialogue", tags=["Dialogue"])
+app.include_router(user_api, prefix="/user", tags=["User"])
 
 # --- 3. CORS AYARLARI (Mobil Uygulama İçin) ---
 app.add_middleware(
@@ -70,28 +80,16 @@ class QueryRequest(BaseModel):
 
 # --- 4. VAKA LİSTELEME ---
 @app.get("/cases")
-def list_cases():
-    cases = selector_agent.cases
-    return [
-        {
-            "id": c.get("id"),
-            "title": c.get("title", "Başlıksız Vaka"),
-            "specialty": c.get("specialty", "Genel"),
-            "difficulty": c.get("difficulty", "Orta"),
-            "summary": c.get("narrative", "")[:120] + "...",
-            "has_image": len(c.get("assets", {}).get("images", [])) > 0
-        } 
-        for c in cases
-    ]
-
+def list_cases(limit: int = 200, offset: int = 0):
+    return selector_agent.list_cases_summary(limit=limit, offset=offset)
 # --- 5. TEK VAKA DETAYI ---
+@app.get("/cases/{case_id}")
 @app.get("/cases/{case_id}")
 def get_case(case_id: str):
     case = selector_agent.get_case_by_id(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
     return case
-
 # --- 6. ESKİ SOHBET ENDPOINTİ (Legacy Support) ---
 @app.post("/cases/{case_id}/query")
 async def query_case(case_id: str, req: QueryRequest):

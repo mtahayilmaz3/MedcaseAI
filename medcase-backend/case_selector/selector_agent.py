@@ -1,80 +1,100 @@
 # case_selector/selector_agent.py
-import json
-import os
-import random
-from typing import Optional, Dict
-from .schemas import CaseOutput, CaseRubric
+import orjson
+from typing import Optional, Dict, Any, List
+
+from sqlalchemy import select, func
+from services.database import SessionLocal
+from services.models import Case
+
 
 class CaseSelectorAgent:
+    """
+    SQLite tabanlı CaseSelector:
+    - Startup'ta JSON yüklemez
+    - DB'den list/lookup/random çeker
+    """
+
     def __init__(self):
-        self.cases = []
-        self.load_data()
+        # İstersen burada DB health check yapabilirsin ama şart değil.
+        pass
 
-    def load_data(self):
-        # Dosya yolunu bul
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        file_path = os.path.join(base_dir, 'data', 'cases_subset.json')
-        
+    def _parse_json(self, s: str, fallback: Any):
+        if not s:
+            return fallback
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                self.cases = json.load(f)
-            print(f"📚 Case Selector: {len(self.cases)} vaka hafızaya alındı.")
-        except Exception as e:
-            print(f"❌ Veri Okuma Hatası: {e}")
-            self.cases = []
+            return orjson.loads(s)
+        except Exception:
+            return fallback
 
-    def select_random_case(self) -> Optional[Dict]:
-        if not self.cases:
-            return {"error": "Veri yok"}
-        
-        selected = random.choice(self.cases)
-        return self._format_case(selected)
-
-    def get_case_by_id(self, case_id: str) -> Optional[Dict]:
-        selected = next((c for c in self.cases if c["id"] == case_id), None)
-        if not selected:
-            return None
-        return self._format_case(selected)
-
-    def _format_case(self, raw_data: dict) -> Dict:
+    def list_cases_summary(self, limit: int = 200, offset: int = 0) -> List[Dict[str, Any]]:
         """
-        Ham JSON verisini Pydantic Schema ile doğrulayıp temizler.
+        /cases için hafif liste: narrative'den kısa özet + has_image gibi alanlar.
         """
-        # --- RESİM URL MANTIĞI (GÜNCELLENDİ) ---
-        image_url = None
-        images = raw_data.get("assets", {}).get("images", [])
-        
-        if images and len(images) > 0:
-            raw_img = images[0]
-            
-            # 1. Eğer resim verisi bir Sözlük (Dict) ise içinden dosya yolunu çıkar
-            if isinstance(raw_img, dict):
-                # Olası anahtarları kontrol et
-                raw_img = raw_img.get("file_path") or raw_img.get("url") or raw_img.get("src")
-            
-            # 2. Eğer elimizde (veya işlemden sonra) bir String varsa URL yap
-            if isinstance(raw_img, str):
-                if raw_img.startswith("http"):
-                    image_url = raw_img
-                else:
-                    image_url = f"http://127.0.0.1:8000/static/images/{raw_img}"
+        db = SessionLocal()
+        try:
+            stmt = (
+                select(Case.id, Case.title, Case.specialty, Case.difficulty, Case.narrative, Case.assets_json)
+                .order_by(Case.id)
+                .limit(limit)
+                .offset(offset)
+            )
+            rows = db.execute(stmt).all()
 
-        # Rubric güvenli çekimi
-        raw_rubric = raw_data.get("rubric", {})
-        
-        # Pydantic ile veriyi paketle
-        case_obj = CaseOutput(
-            id=raw_data.get("id"),
-            title=raw_data.get("title", "Unknown Case"),
-            specialty=raw_data.get("specialty", "General"),
-            difficulty=raw_data.get("difficulty", "Intermediate"),
-            narrative=raw_data.get("narrative", ""),
-            image=image_url,
-            rubric=CaseRubric(**raw_rubric),
-            seed_questions=raw_data.get("seed_questions", [])
-        )
+            out = []
+            for r in rows:
+                assets = self._parse_json(r.assets_json, {"images": []})
+                images = (assets or {}).get("images", [])
+                out.append({
+                    "id": r.id,
+                    "title": r.title or "Untitled Case",
+                    "specialty": r.specialty or "General",
+                    "difficulty": r.difficulty or "Intermediate",
+                    "summary": (r.narrative or "")[:120] + "...",
+                    "has_image": bool(images) and len(images) > 0,
+                })
+            return out
+        finally:
+            db.close()
 
-        return case_obj.model_dump()
+    def get_case_by_id(self, case_id: str) -> Optional[Dict[str, Any]]:
+        db = SessionLocal()
+        try:
+            row = db.get(Case, case_id)
+            if not row:
+                return None
 
-# Singleton Instance
+            assets = self._parse_json(row.assets_json, {"images": []})
+            rubric = self._parse_json(row.rubric_json, {})
+
+            return {
+                "id": row.id,
+                "title": row.title or "",
+                "specialty": row.specialty or "",
+                "difficulty": row.difficulty or "Intermediate",
+                "narrative": row.narrative or "",
+                "assets": assets,
+                "rubric": rubric,
+                # seed_questions artık DB'de yoksa boş dön
+                "seed_questions": [],
+            }
+        finally:
+            db.close()
+
+    def select_random_case(self) -> Optional[Dict[str, Any]]:
+        """
+        SQLite'ta en pratik random: ORDER BY RANDOM() LIMIT 1
+        (200-5k kayıt gibi boyutlarda gayet yeterli)
+        """
+        db = SessionLocal()
+        try:
+            stmt = select(Case.id).order_by(func.random()).limit(1)
+            case_id = db.execute(stmt).scalar_one_or_none()
+            if not case_id:
+                return None
+            return self.get_case_by_id(case_id)
+        finally:
+            db.close()
+
+
+# singleton
 selector_agent = CaseSelectorAgent()
