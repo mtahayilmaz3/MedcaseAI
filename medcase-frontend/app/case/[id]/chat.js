@@ -11,18 +11,16 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
-  SafeAreaView, // ✅ Safe Area
-  Dimensions,   // ✅ Ekran genişliği için
-  Keyboard      // ✅ Klavye dinleyicisi için
+  SafeAreaView,
+  Keyboard
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import Markdown from 'react-native-markdown-display'; // ✅ Markdown eklendi
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import Markdown from 'react-native-markdown-display';
 import { chatDialogue, getCaseById } from "../../../src/api/endpoints";
 import { Colors } from "../../../src/theme/colors";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-// ✅ RENK VE EMOJİ KONFİGÜRASYONU
+// --- RENK VE EMOJİ AYARLARI ---
 const MODE_CONFIG = {
   hint: {
     id: "hint",
@@ -69,6 +67,7 @@ const MODE_OPTIONS = [MODE_CONFIG.hint, MODE_CONFIG.explain, MODE_CONFIG.teach];
 
 export default function CaseChatPage() {
   const { id } = useLocalSearchParams();
+  const router = useRouter();
 
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -76,7 +75,6 @@ export default function CaseChatPage() {
   const [isDiscussionClosed, setIsDiscussionClosed] = useState(false);
   const [caseData, setCaseData] = useState(null);
 
-  // Ayarlar
   const [mode, setMode] = useState("hint"); 
   const [userLevel, setUserLevel] = useState("beginner"); 
   const [language, setLanguage] = useState("en"); 
@@ -85,7 +83,7 @@ export default function CaseChatPage() {
     {
       role: "ai",
       text: "I have reviewed the file. You can share your analysis or ask about specific tests.",
-      mode: "neutral"
+      mode: "neutral" 
     },
   ]);
   const [followups, setFollowups] = useState([]);
@@ -94,18 +92,15 @@ export default function CaseChatPage() {
   useEffect(() => {
     getCaseById(String(id)).then(setCaseData).catch(console.error);
 
-    // ✅ KLAVYE SCROLL DÜZELTMESİ
-    // Klavye açıldığında listeyi en aşağı kaydırır
     const keyboardDidShowListener = Keyboard.addListener(
       'keyboardDidShow',
       () => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
       }
     );
-
-    return () => {
-      keyboardDidShowListener.remove();
-    };
+    return () => keyboardDidShowListener.remove();
   }, [id]);
 
   const send = async (textFromChip) => {
@@ -155,12 +150,10 @@ export default function CaseChatPage() {
     setFollowups([]);
   };
 
-  // ✅ Mesaj İçeriği Render Fonksiyonu (Markdown Desteği)
   const renderMessageContent = (item) => {
     if (item.role === 'ai') {
       return (
         <View style={{ width: '100%' }}>
-          {/* Markdown Bileşeni */}
           <Markdown style={markdownStyles}>
             {item.text}
           </Markdown>
@@ -172,188 +165,189 @@ export default function CaseChatPage() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        // ✅ GÜNCELLEME: Offset değeri 10 -> 100 yapıldı.
-        // Bu sayede klavye açıldığında input alanı görünür kalır.
-        keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
-      >
-        {/* Header */}
-        <View style={styles.topActionHeader}>
+      
+      {/* 1. HEADER (SABİT) */}
+      <View style={styles.topActionHeader}>
+        <View style={styles.headerLeftGroup}>
+          {/* ✅ GERİ DÖNME BUTONU */}
+          <Pressable 
+            onPress={() => router.push(`/case/${id}`)} 
+            style={styles.backBtn}
+            hitSlop={10}
+          >
+            <Ionicons name="chevron-back" size={28} color={Colors.accent} />
+          </Pressable>
+          
           <Pressable
             style={styles.viewReportBtn}
             onPress={() => setReportVisible(true)}
           >
             <Text style={styles.viewReportText}>📄 Report</Text>
           </Pressable>
+        </View>
 
+    
+      </View>
+
+      {/* 2. KLAVYE ALANI (ESNEK) */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      >
+        <View style={{ flex: 1, backgroundColor: Colors.white }}>
+          
+          {/* Mode Seçimi */}
+          <View style={styles.modeBar}>
+            {MODE_OPTIONS.map((m) => {
+              const active = mode === m.id;
+              return (
+                <Pressable
+                  key={m.id}
+                  onPress={() => onChangeMode(m.id)}
+                  style={({ pressed }) => [
+                    styles.modeChip,
+                    { 
+                      backgroundColor: active ? m.colors.btnBg : Colors.white,
+                      borderColor: active ? m.colors.main : Colors.border,
+                      opacity: pressed ? 0.7 : 1,
+                      transform: [{ scale: pressed ? 0.98 : 1 }]
+                    }
+                  ]}
+                  disabled={busy}
+                >
+                  <Text style={{ fontSize: 16 }}>{m.emoji}</Text>
+                  <Text
+                    style={[
+                      styles.modeChipText,
+                      { color: active ? m.colors.dark : Colors.textSub }
+                    ]}
+                  >
+                    {m.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          
+          <Text style={styles.modeHintText}>
+            Mode:{" "}
+            <Text style={{ fontWeight: "800", color: MODE_CONFIG[mode].colors.dark }}>
+              {MODE_CONFIG[mode].desc}
+            </Text>
+          </Text>
+
+          {/* Chat Listesi */}
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(_, i) => String(i)}
+            style={{ flex: 1 }} // Listeye esneklik ver
+            contentContainerStyle={styles.chatPadding}
+            onContentSizeChange={() => {
+              setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: true });
+              }, 50);
+            }}
+            onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            keyboardDismissMode="on-drag" 
+            renderItem={({ item }) => {
+              const isUser = item.role === "user";
+              let bubbleStyle = styles.aiBubble;
+
+              if (!isUser && item.mode && MODE_CONFIG[item.mode]) {
+                 const conf = MODE_CONFIG[item.mode].colors;
+                 bubbleStyle = {
+                   ...styles.aiBubble,
+                   backgroundColor: conf.bg,
+                   borderColor: conf.border,
+                 };
+              }
+
+              return (
+                <View style={[styles.bubble, isUser ? styles.userBubble : bubbleStyle]}>
+                  {renderMessageContent(item)}
+                </View>
+              );
+            }}
+            ListFooterComponent={() =>
+              followups.length > 0 &&
+              !busy && (
+                <View style={styles.suggestionArea}>
+                  <Text style={styles.suggestionTitle}>Suggested Questions:</Text>
+                  {followups.map((f, i) => (
+                    <Pressable
+                      key={i}
+                      onPress={() => send(f)}
+                      style={styles.verticalChip}
+                    >
+                      <Text style={styles.chipText}>{f}</Text>
+                      <Text style={styles.chipArrow}>→</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )
+            }
+          />
+
+          {/* ✅ 3. INPUT ALANI (SEND BUTONU BURADA) */}
           {!isDiscussionClosed ? (
-            <Pressable
-              style={styles.closeDiscussionBtn}
-              onPress={closeDiscussion}
-            >
-              <Text style={styles.closeDiscussionText}>End Discussion</Text>
-            </Pressable>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Type your analysis..."
+                value={input}
+                onChangeText={setInput}
+                multiline
+                editable={!busy}
+              />
+              <Pressable
+                onPress={() => send()}
+                style={[
+                  styles.sendBtn, 
+                  !input.trim() && { opacity: 0.5 },
+                  { backgroundColor: MODE_CONFIG[mode].colors.main }
+                ]}
+              >
+                {busy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.sendText}>Send</Text>
+                )}
+              </Pressable>
+            </View>
           ) : (
-            <View style={styles.closedBadge}>
-              <Text style={styles.closedBadgeText}>Completed</Text>
+            <View style={styles.discussionClosedFooter}>
+              <Text style={styles.closedInfoText}>
+                This discussion has ended.
+              </Text>
             </View>
           )}
-        </View>
 
-        {/* Renkli Butonlar */}
-        <View style={styles.modeBar}>
-          {MODE_OPTIONS.map((m) => {
-            const active = mode === m.id;
-            return (
-              <Pressable
-                key={m.id}
-                onPress={() => onChangeMode(m.id)}
-                style={({ pressed }) => [
-                  styles.modeChip,
-                  { 
-                    backgroundColor: active ? m.colors.btnBg : Colors.white,
-                    borderColor: active ? m.colors.main : Colors.border,
-                    opacity: pressed ? 0.8 : 1,
-                    transform: [{ scale: pressed ? 0.98 : 1 }]
-                  }
-                ]}
-                disabled={busy}
-              >
-                <Text style={{ fontSize: 16 }}>{m.emoji}</Text>
-                <Text
-                  style={[
-                    styles.modeChipText,
-                    { color: active ? m.colors.dark : Colors.textSub }
-                  ]}
-                >
-                  {m.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        
-        {/* Mod Açıklaması */}
-        <Text style={styles.modeHintText}>
-          Mode:{" "}
-          <Text style={{ fontWeight: "800", color: MODE_CONFIG[mode].colors.dark }}>
-            {MODE_CONFIG[mode].desc}
-          </Text>
-        </Text>
-
-        {/* Chat Listesi */}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(_, i) => String(i)}
-          // ✅ Scroll İyileştirmeleri
-          contentContainerStyle={styles.chatPadding}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          keyboardDismissMode="on-drag" // Listeyi çekince klavye kapanır
-          renderItem={({ item }) => {
-            const isUser = item.role === "user";
-            
-            let bubbleStyle = styles.aiBubble;
-
-            if (!isUser && item.mode && MODE_CONFIG[item.mode]) {
-               const conf = MODE_CONFIG[item.mode].colors;
-               bubbleStyle = {
-                 ...styles.aiBubble,
-                 backgroundColor: conf.bg,
-                 borderColor: conf.border,
-               };
-            }
-
-            return (
-              <View
-                style={[
-                  styles.bubble,
-                  isUser ? styles.userBubble : bubbleStyle,
-                ]}
-              >
-                {renderMessageContent(item)}
-              </View>
-            );
-          }}
-          ListFooterComponent={() =>
-            followups.length > 0 &&
-            !busy && (
-              <View style={styles.suggestionArea}>
-                <Text style={styles.suggestionTitle}>Suggested Questions:</Text>
-                {followups.map((f, i) => (
-                  <Pressable
-                    key={i}
-                    onPress={() => send(f)}
-                    style={styles.verticalChip}
-                  >
-                    <Text style={styles.chipText}>{f}</Text>
-                    <Text style={styles.chipArrow}>→</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )
-          }
-        />
-
-        {/* Giriş Alanı */}
-        {!isDiscussionClosed ? (
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={styles.input}
-              placeholder="Type your analysis..."
-              value={input}
-              onChangeText={setInput}
-              multiline
-              editable={!busy}
-            />
-            <Pressable
-              onPress={() => send()}
-              style={[
-                styles.sendBtn, 
-                !input.trim() && { opacity: 0.5 },
-                { backgroundColor: MODE_CONFIG[mode].colors.main }
-              ]}
-            >
-              {busy ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.sendText}>Send</Text>
-              )}
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.discussionClosedFooter}>
-            <Text style={styles.closedInfoText}>
-              This discussion has ended.
-            </Text>
-          </View>
-        )}
-
-        {/* Modal */}
-        <Modal visible={reportVisible} animationType="fade" transparent={true}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Clinical File</Text>
-                <Pressable onPress={() => setReportVisible(false)} hitSlop={20}>
-                  <Text style={styles.closeModalBtn}>Close</Text>
-                </Pressable>
-              </View>
-              <ScrollView>
-                <Text style={styles.reportText}>{caseData?.narrative}</Text>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        </View> 
       </KeyboardAvoidingView>
+
+      {/* Modal */}
+      <Modal visible={reportVisible} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Clinical File</Text>
+              <Pressable onPress={() => setReportVisible(false)} hitSlop={20}>
+                <Text style={styles.closeModalBtn}>Close</Text>
+              </Pressable>
+            </View>
+            <ScrollView>
+              <Text style={styles.reportText}>{caseData?.narrative}</Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
-// ✅ MARKDOWN STYLES
 const markdownStyles = {
   body: { fontSize: 15, lineHeight: 24, color: Colors.textMain, width: '100%' },
   paragraph: { flexWrap: 'wrap', marginBottom: 10, width: '100%' },
@@ -366,15 +360,25 @@ const markdownStyles = {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.white },
-  container: { flex: 1, backgroundColor: Colors.background },
-
+  
   topActionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: 'center', 
     padding: 12,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    zIndex: 10,
+  },
+  headerLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8, 
+  },
+  backBtn: {
+    padding: 4,
+    marginRight: 2,
   },
   viewReportBtn: {
     backgroundColor: "#F1F5F9",
@@ -389,14 +393,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
   },
-  closeDiscussionText: { color: Colors.danger, fontWeight: "700" },
-  closedBadge: {
-    backgroundColor: "#E2E8F0",
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  closedBadgeText: { color: Colors.textSub, fontWeight: "700" },
 
   modeBar: {
     flexDirection: "row",
@@ -413,10 +409,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.white,
     alignItems: "center",
     justifyContent: 'center',
+    borderColor: Colors.border, 
+    backgroundColor: Colors.white,
   },
   modeChipText: { 
     fontWeight: "800", 
@@ -433,7 +429,6 @@ const styles = StyleSheet.create({
 
   chatPadding: { padding: 16, paddingBottom: 20 },
   
-  // ✅ Balon Genişlik Ayarları (Markdown bozulmasın diye)
   bubble: { 
     padding: 14, 
     borderRadius: 20, 
@@ -443,7 +438,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     backgroundColor: Colors.primary,
     borderBottomRightRadius: 4,
-    maxWidth: "85%",
+    maxWidth: "85%", 
   },
   aiBubble: {
     alignSelf: "flex-start",
@@ -451,11 +446,10 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     borderWidth: 1,
     borderColor: Colors.border,
-    minWidth: SCREEN_WIDTH * 0.75, 
-    maxWidth: SCREEN_WIDTH * 0.90, 
+    minWidth: '75%',
+    maxWidth: '90%', 
   },
   
-  // msgText ve aiText artık Markdown içinde handle ediliyor ama user için gerekli
   msgText: { fontSize: 15, lineHeight: 22 },
   userText: { color: Colors.white, fontSize: 15 },
   aiText: { color: Colors.textMain },

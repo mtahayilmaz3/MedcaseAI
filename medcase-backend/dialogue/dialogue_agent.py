@@ -23,7 +23,7 @@ class DialogueAgent:
         user_input: str,
         case_data: dict,
         mode: str = "hint",
-        language: str = "tr",
+        language: str = "en",
         user_level: str = "beginner"
     ):
         # Eğer client oluşmadıysa hata ver
@@ -36,7 +36,7 @@ class DialogueAgent:
 
         # Language guard
         if language not in ["tr", "en"]:
-            language = "tr"
+            language = "en"
 
         # case_data güvenli stringify
         try:

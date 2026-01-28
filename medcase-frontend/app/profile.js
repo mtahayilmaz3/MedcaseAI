@@ -12,15 +12,15 @@ export default function ProfilePage() {
     fullName: "John Doe",
     email: "john.doe@email.com",
     university: "Biruni University",
-    department: "Medicine",
-    studentId: "123456789"
+    department: "3rd Year Medicine Student",
+    studentId: "2104002001"
   });
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profil Ayarları</Text>
+        <Text style={styles.headerTitle}>Profile Settings</Text>
       </View>
 
         {/* Profil Fotoğrafı Bölümü */}
@@ -37,10 +37,10 @@ export default function ProfilePage() {
 
         {/* Kişisel Bilgiler Formu */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>KİŞİSEL BİLGİLER</Text>
+          <Text style={styles.sectionLabel}>Personal Informations</Text>
           
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Ad Soyad</Text>
+            <Text style={styles.inputLabel}>Name Surname</Text>
             <View style={styles.inputWrapper}>
               <Ionicons name="person-outline" size={20} color="#64748B" />
               <TextInput 
@@ -52,7 +52,7 @@ export default function ProfilePage() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>E-Posta Adresi</Text>
+            <Text style={styles.inputLabel}>E-Mail Adress</Text>
             <View style={styles.inputWrapper}>
               <Ionicons name="mail-outline" size={20} color="#64748B" />
               <TextInput 
@@ -67,10 +67,10 @@ export default function ProfilePage() {
 
         {/* Akademik Bilgiler Formu */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>AKADEMİK BİLGİLER</Text>
+          <Text style={styles.sectionLabel}>ACADEMIC INFORMATIONS</Text>
           
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Üniversite</Text>
+            <Text style={styles.inputLabel}>University</Text>
             <View style={styles.inputWrapper}>
               <Ionicons name="business-outline" size={20} color="#64748B" />
               <TextInput style={styles.input} value={userInfo.university} editable={false} />
@@ -78,7 +78,7 @@ export default function ProfilePage() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Öğrenci No</Text>
+            <Text style={styles.inputLabel}>Student Number</Text>
             <View style={styles.inputWrapper}>
               <Ionicons name="card-outline" size={20} color="#64748B" />
               <TextInput style={styles.input} value={userInfo.studentId} editable={false} />
@@ -88,12 +88,12 @@ export default function ProfilePage() {
 
         {/* Uygulama Ayarları / Aksiyonlar */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>HESAP YÖNETİMİ</Text>
+          <Text style={styles.sectionLabel}>ACCOUNT MANAGEMENT</Text>
           
           <Pressable style={styles.actionRow}>
             <View style={styles.actionLeft}>
               <Ionicons name="lock-closed-outline" size={22} color="#475569" />
-              <Text style={styles.actionText}>Şifre Değiştir</Text>
+              <Text style={styles.actionText}>Change Password</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
           </Pressable>
@@ -101,7 +101,7 @@ export default function ProfilePage() {
           <Pressable style={styles.actionRow}>
             <View style={styles.actionLeft}>
               <Ionicons name="notifications-outline" size={22} color="#475569" />
-              <Text style={styles.actionText}>Bildirim Ayarları</Text>
+              <Text style={styles.actionText}>Notifications</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
           </Pressable>
@@ -109,13 +109,13 @@ export default function ProfilePage() {
           <Pressable style={[styles.actionRow, { borderBottomWidth: 0 }]}>
             <View style={styles.actionLeft}>
               <Ionicons name="trash-outline" size={22} color={Colors.danger} />
-              <Text style={[styles.actionText, { color: Colors.danger }]}>Verileri Sıfırla</Text>
+              <Text style={[styles.actionText, { color: Colors.danger }]}>Reset Database</Text>
             </View>
           </Pressable>
         </View>
 
         <Pressable style={styles.saveBtn}>
-          <Text style={styles.saveBtnText}>Değişiklikleri Kaydet</Text>
+          <Text style={styles.saveBtnText}>Save Changes</Text>
         </Pressable>
 
         <View style={{ height: 40 }} />

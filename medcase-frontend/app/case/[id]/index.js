@@ -1,18 +1,27 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   View, Text, ScrollView, StyleSheet, Pressable,
-  ActivityIndicator, SafeAreaView, StatusBar
+  ActivityIndicator, SafeAreaView, StatusBar, LayoutAnimation, Platform, UIManager
 } from "react-native";
-import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { getCaseById, submitAnswer } from "../../../src/api/endpoints";
 import { Colors } from "../../../src/theme/colors";
 import { getLastSession } from "../../../src/api/session_cache";
 
-// Durum seçenekleri
+import { Ionicons } from "@expo/vector-icons";
+
+
+// Android için animasyon aktivasyonu
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
+
 const STATUS_OPTIONS = [
-  { id: 'Çözülecek', label: 'Çözülecek', color: '#64748B', bg: '#F1F5F9' },
-  { id: 'Devam Ediyor', label: 'Devam Ediyor', color: '#854D0E', bg: '#FEF9C3' },
-  { id: 'Çözüldü', label: 'Çözüldü', color: '#166534', bg: '#DCFCE7' }
+  { id: 'Çözülecek', label: 'Pending', color: '#64748B', bg: '#F1F5F9' },
+  { id: 'Devam Ediyor', label: 'Ongoing', color: '#854D0E', bg: '#FEF9C3' },
+  { id: 'Çözüldü', label: 'Solved', color: '#166534', bg: '#DCFCE7' }
 ];
 
 export default function PatientRecordPage() {
@@ -25,46 +34,47 @@ export default function PatientRecordPage() {
   const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentStatus, setCurrentStatus] = useState('Çözülecek');
+  
+  // Metin genişletme durumu
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // MCQ states
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState(null);
+  const [feedback, setFeedback] = useState(null); 
 
-  const cached = getLastSession();
+  const cached = getLastSession ? getLastSession() : null;
 
-  // Cache kontrolü
   const mcq = useMemo(() => {
-    if (!sessionId) return null;
-    if (!cached) return null;
+    if (!sessionId || !cached) return null;
     if (cached.session_id !== sessionId) return null;
     if (!cached.case || String(cached.case.id) !== id) return null;
     return cached.mcq || null;
   }, [sessionId, cached, id]);
 
-  // 1. Vaka Detayını Çek
   useEffect(() => {
     getCaseById(String(id))
       .then((res) => {
         setCaseData(res);
-        setCurrentStatus(res.status || 'Çözülecek');
+        const statusMap = {
+          'Çözülecek': 'Pending',
+          'Devam Ediyor': 'Ongoing',
+          'Çözüldü': 'Solved'
+        };
+        setCurrentStatus(statusMap[res.status] || res.status || 'Pending');
       })
       .catch((e) => console.error(e))
       .finally(() => setLoading(false));
   }, [id]);
 
-  // 2. EKRANI TEMİZLEME (KRİTİK BÖLÜM)
-  // Session ID değiştiğinde seçimleri sıfırla.
-  useEffect(() => {
-    if (sessionId) {
-      setSelectedIndex(null);
-      setFeedback(null);
-      setSubmitting(false);
-    }
-  }, [sessionId]); 
-
   const handleStatusChange = (newStatus) => {
     setCurrentStatus(newStatus);
+  };
+
+  const toggleExpand = () => {
+    // Yumuşak bir geçiş animasyonu
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsExpanded(!isExpanded);
   };
 
   const handleSubmitAnswer = async () => {
@@ -75,12 +85,12 @@ export default function PatientRecordPage() {
       const res = await submitAnswer(sessionId, selectedIndex, "explain", "beginner", "en");
       setFeedback({
         isCorrect: !!res.isCorrect,
-        tutorAnswer: res?.tutor?.answer || "Geri bildirim alınamadı."
+        tutorAnswer: res?.tutor?.answer || "No feedback received."
       });
     } catch (e) {
       setFeedback({
         isCorrect: false,
-        tutorAnswer: "Bağlantı hatası oluştu."
+        tutorAnswer: "Connection error. Please try again."
       });
     } finally {
       setSubmitting(false);
@@ -88,27 +98,35 @@ export default function PatientRecordPage() {
   };
 
   if (loading) return <ActivityIndicator size="large" color={Colors.accent} style={{ flex: 1 }} />;
-  if (!caseData) return <View style={styles.container}><Text>Vaka bulunamadı.</Text></View>;
+  if (!caseData) return <View style={styles.container}><Text>Case not found.</Text></View>;
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        {/* Vaka Kimlik Kartı */}
+        {/* Header */}
         <View style={styles.idCard}>
           <View style={styles.idHeader}>
+            {/* ✅ GERİ DÖNME BUTONU */}
+            <Pressable 
+            onPress={() => router.push(`/cases`)} 
+            style={styles.backBtn}
+            hitSlop={10}
+            >
+              <Ionicons name="chevron-back" size={28} color={Colors.accent} />
+              </Pressable>
             <View style={styles.patientAvatar}>
               <Text style={styles.avatarText}>P-{id.slice(-2)}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.caseIdText}>Vaka Dosyası</Text>
-              <Text style={styles.specialtyText}>{caseData.specialty || "Genel Tıp"}</Text>
+              <Text style={styles.caseIdText}>Case File</Text>
+              <Text style={styles.specialtyText}>{caseData.specialty || "General Medicine"}</Text>
             </View>
           </View>
 
           <View style={styles.statusSection}>
-            <Text style={styles.statusTitle}>VAKA DURUMU:</Text>
+            <Text style={styles.statusTitle}>CASE STATUS:</Text>
             <View style={styles.statusPicker}>
               {STATUS_OPTIONS.map((option) => (
                 <Pressable
@@ -132,22 +150,39 @@ export default function PatientRecordPage() {
           </View>
         </View>
 
-        {/* Klinik Rapor */}
-        <Text style={styles.sectionTitle}>Klinik Tablo</Text>
+        {/* Narrative (Klinik Tablo) */}
+        <Text style={styles.sectionTitle}>Clinical Narrative</Text>
         <View style={styles.mainInfoCard}>
           <Text style={styles.caseTitleText}>{caseData.title}</Text>
           <View style={styles.divider} />
-          <Text style={styles.narrativeText}>{caseData.narrative || "Vaka detayı yüklenemedi."}</Text>
+          
+          {/* ✅ GÜNCELLEME: Hem Read More hem Show Less mantığı */}
+          <Pressable onPress={toggleExpand} activeOpacity={0.9}>
+            <Text 
+              style={styles.narrativeText}
+              // Expanded ise limit yok (undefined), değilse 8 satır
+              numberOfLines={isExpanded ? undefined : 8} 
+            >
+              {caseData.narrative || "No details loaded."}
+            </Text>
+            
+            {/* Buton her zaman görünür, metni duruma göre değişir */}
+            <View style={styles.readMoreContainer}>
+              <Text style={styles.readMoreText}>
+                {isExpanded ? "Show less" : "Read more..."}
+              </Text>
+            </View>
+          </Pressable>
         </View>
 
-        {/* MCQ / Hızlı Antrenman */}
+        {/* Quick Training (MCQ) */}
         {sessionId ? (
           <View style={styles.mcqCard}>
-            <Text style={styles.mcqTitle}>Hızlı Antrenman</Text>
+            <Text style={styles.mcqTitle}>Quick Training</Text>
 
             {!mcq ? (
               <Text style={styles.mcqMuted}>
-                Oturum bilgisi yükleniyor veya bulunamadı...
+                Training session not found. Please restart from the dashboard.
               </Text>
             ) : (
               <>
@@ -159,10 +194,11 @@ export default function PatientRecordPage() {
                     return (
                       <Pressable
                         key={idx}
-                        onPress={() => setSelectedIndex(idx)}
+                        onPress={() => !feedback && setSelectedIndex(idx)} 
                         style={[
                           styles.optionRow,
-                          active && styles.optionRowActive
+                          active && styles.optionRowActive,
+                          feedback && { opacity: 0.8 }
                         ]}
                       >
                         <Text style={[styles.optionLetter, active && styles.optionLetterActive]}>
@@ -176,18 +212,20 @@ export default function PatientRecordPage() {
                   })}
                 </View>
 
-                <Pressable
-                  onPress={handleSubmitAnswer}
-                  disabled={selectedIndex === null || submitting}
-                  style={[
-                    styles.submitBtn,
-                    (selectedIndex === null || submitting) && { opacity: 0.6 }
-                  ]}
-                >
-                  <Text style={styles.submitBtnText}>
-                    {submitting ? "Değerlendiriliyor..." : "Cevabı Gönder"}
-                  </Text>
-                </Pressable>
+                {!feedback && (
+                  <Pressable
+                    onPress={handleSubmitAnswer}
+                    disabled={selectedIndex === null || submitting}
+                    style={[
+                      styles.submitBtn,
+                      (selectedIndex === null || submitting) && { opacity: 0.6 }
+                    ]}
+                  >
+                    <Text style={styles.submitBtnText}>
+                      {submitting ? "Evaluating..." : "Submit Answer"}
+                    </Text>
+                  </Pressable>
+                )}
 
                 {feedback && (
                   <View style={[
@@ -195,7 +233,7 @@ export default function PatientRecordPage() {
                     feedback.isCorrect ? styles.feedbackCorrect : styles.feedbackWrong
                   ]}>
                     <Text style={styles.feedbackTitle}>
-                      {feedback.isCorrect ? "Doğru ✅" : "Yanlış ❌"}
+                      {feedback.isCorrect ? "Correct ✅" : "Incorrect ❌"}
                     </Text>
                     <Text style={styles.feedbackText}>{feedback.tutorAnswer}</Text>
                   </View>
@@ -207,12 +245,13 @@ export default function PatientRecordPage() {
 
       </ScrollView>
 
+      {/* Footer */}
       <View style={styles.footer}>
         <Pressable
           style={styles.actionButton}
           onPress={() => router.push(`/case/${id}/chat`)}
         >
-          <Text style={styles.actionButtonText}>Klinik Tartışmayı Başlat</Text>
+          <Text style={styles.actionButtonText}>Start Clinical Discussion</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -242,7 +281,18 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: '#EDF2F7', marginBottom: 15 },
   narrativeText: { fontSize: 16, color: '#4A5568', lineHeight: 26 },
 
-  // MCQ styles
+  // ✅ Styles for Read More / Show Less
+  readMoreContainer: {
+    marginTop: 8,
+    alignItems: 'flex-start',
+    paddingVertical: 5 // Tıklamayı kolaylaştırmak için biraz padding
+  },
+  readMoreText: {
+    color: Colors.accent,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+
   mcqCard: { backgroundColor: Colors.white, borderRadius: 24, padding: 20, marginTop: 10, borderWidth: 1, borderColor: '#EDF2F7' },
   mcqTitle: { fontSize: 14, fontWeight: '900', color: Colors.textSub, marginBottom: 10, letterSpacing: 0.5 },
   mcqMuted: { fontSize: 14, color: Colors.textSub, lineHeight: 22 },

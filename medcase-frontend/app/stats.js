@@ -55,7 +55,7 @@ export default function DetailedStatsPage() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Klinik Metrikler</Text>
+        <Text style={styles.headerTitle}>Clinical Metrics</Text>
         <Text style={styles.headerSub}>MedCase AI v1.2</Text>
       </View>
 
@@ -73,22 +73,22 @@ export default function DetailedStatsPage() {
           <View style={styles.infoCard}>
             <Ionicons name="checkmark-circle-outline" size={24} color={Colors.success} />
             <Text style={styles.infoVal}>{stats.total_correct}</Text>
-            <Text style={styles.infoLabel}>Doğru Tanı</Text>
+            <Text style={styles.infoLabel}>Correct Diagnosis</Text>
           </View>
           <View style={styles.infoCard}>
             <Ionicons name="pie-chart-outline" size={24} color={Colors.accent} />
             <Text style={styles.infoVal}>%{accuracy}</Text>
-            <Text style={styles.infoLabel}>Başarı Oranı</Text>
+            <Text style={styles.infoLabel}>Success Rate</Text>
           </View>
           <View style={styles.infoCard}>
             <Ionicons name="layers-outline" size={24} color={Colors.warning} />
             <Text style={styles.infoVal}>{totalAnswers}</Text>
-            <Text style={styles.infoLabel}>Toplam Deneme</Text>
+            <Text style={styles.infoLabel}>Total Trial</Text>
           </View>
         </View>
 
         {/* 2. Haftalık Aktivite Grafiği (Placeholder) */}
-        <Text style={styles.sectionTitle}>HAFTALIK VAKA AKTİVİTESİ (Simülasyon)</Text>
+        <Text style={styles.sectionTitle}>Weekly Case Activity (Simulation)</Text>
         <View style={styles.chartCard}>
           <View style={styles.barChartRow}>
             {weeklyActivity.map((val, idx) => (

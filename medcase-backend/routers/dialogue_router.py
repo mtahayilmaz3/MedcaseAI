@@ -30,7 +30,7 @@ class DialogueRequest(BaseModel):
     message: str
     mode: Optional[str] = "hint"          # hint | explain | teach
     userLevel: Optional[str] = "beginner" # beginner | intermediate | advanced
-    language: Optional[str] = "tr"        # tr | en
+    language: Optional[str] = "en"        # tr | en
     session_id: Optional[str] = None      # Frontend'den gelen session_id
 
 class AnswerRequest(BaseModel):
@@ -122,7 +122,7 @@ async def chat_with_agent(case_id: str, req: DialogueRequest, db: Session = Depe
 
     # 3. Parametreleri hazırla
     mode = req.mode if req.mode in ["hint", "explain", "teach"] else "hint"
-    language = req.language if req.language in ["tr", "en"] else "tr"
+    language = req.language if req.language in ["tr", "en"] else "en"
     user_level = req.userLevel or "beginner"
 
     user_input_with_meta = (

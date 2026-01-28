@@ -21,7 +21,7 @@ You are a medical education tutor (TutorAgent). Your job:
 - The dataset.correct field is the ground truth.
 """.strip()
 
-    if language == "tr":
+    if language == "en":
         if mode == "hint":
             return (tr_base + """
 MODE=HINT:

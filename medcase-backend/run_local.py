@@ -28,7 +28,7 @@ def main():
             "ask": "Neden bu seçenek yanlış?"
         },
         "mode": "explain",   # hint | explain | teach
-        "language": "tr",
+        "language": "en",
         "userLevel": "beginner"
     }
 
